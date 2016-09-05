@@ -15,8 +15,14 @@ $baseUri = 'https://portal.consyste.com.br/api/v1'
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
 function Call-Consyste {
-  $uri = "$baseUri$args"
-  Invoke-RestMethod -Headers @{ 'X-Consyste-Auth-Token' = $AuthToken } -Uri $uri
+  param (
+    [Parameter(Position=0)][string]$path,
+    $OutFile
+  )
+  $uri = "$baseUri$path"
+  $pp = $progressPreference = 'silentlyContinue'
+  Invoke-RestMethod -Headers @{ 'X-Consyste-Auth-Token' = $AuthToken } -Uri $uri -OutFile $OutFile
+  $progressPreference = $pp
 }
 
 $res = Call-Consyste "/nfe/lista/recebidos?q=$([uri]::EscapeDataString($Query))"
@@ -54,9 +60,14 @@ foreach ($chave in $chaves) {
   }
   Else {
     Write-Host -NoNewLine "baixando... "
-    Call-Consyste "/nfe/$chave/download.xml" | Out-File "$OutDir/$chave.xml"
-    Write-Host -ForegroundColor Green "OK!"
-    $baixados += 1
+    Try {
+      Call-Consyste "/nfe/$chave/download.xml" -OutFile "$OutDir/$chave.xml" | Out-Null
+      Write-Host -ForegroundColor Green "OK!"
+      $baixados += 1
+    }
+    Catch {
+      Write-Host -ForegroundColor Red "ERRO: $($_.Exception.Message)"
+    }
   }
 }
 $sw2.Stop()
