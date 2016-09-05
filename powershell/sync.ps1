@@ -20,7 +20,8 @@ function Call-Consyste {
     $OutFile
   )
   $uri = "$baseUri$path"
-  $pp = $progressPreference = 'silentlyContinue'
+  $pp = $progressPreference
+  $progressPreference = 'silentlyContinue'
   Invoke-RestMethod -Headers @{ 'X-Consyste-Auth-Token' = $AuthToken } -Uri $uri -OutFile $OutFile
   $progressPreference = $pp
 }
