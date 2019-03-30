@@ -18,7 +18,7 @@ def main(params):
     # cria diretório de saída, se não existir
     if not os.path.isdir(params.out):
         os.makedirs(params.out)
-    
+
     # cria cliente de API
     api = ConsysteClient(params.token)
 
@@ -121,13 +121,20 @@ def progressbar(it, prefix="", size=60, file=sys.stdout):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Faz o download de XMLs da Plataforma Consyst-e")
-    parser.add_argument('--token', required=True,
-                        help="O token de autenticação na Consyst-e")
-    parser.add_argument('--out', required=True,
-                        help="O diretório onde os XMLs serão salvos")
-    parser.add_argument('--kind', required=True, choices=('nfe', 'cte'),
-                        help="O tipo de documento a consultar ('nfe' ou 'cte')")
-    parser.add_argument('--query', required=True,
-                        help="Consulta a rodar")
+    parser.add_argument('out', default="./xmls", nargs='?',
+                        help="diretório onde os XMLs serão salvos, padrão: ./xmls")
+    parser.add_argument('-k', '--kind', default='nfe', choices=('nfe', 'cte'),
+                        help="tipo de documento a baixar (nfe ou cte), padrão: nfe")
+    parser.add_argument('-q', '--query', default='recebido_em: [now-30d TO *]',
+                        help="consulta a rodar, se não for especificado serão baixados os documentos recebidos nos últimos 30 dias")
+    parser.add_argument('-t', '--token', default=os.environ.get('CONSYSTE_TOKEN'),
+                        help="token de autenticação na Consyst-e, se não for especificado será lido da variável de ambiente CONSYSTE_TOKEN")
 
-    main(parser.parse_args())
+    params = parser.parse_args()
+
+    if params.token is None or len(params.token) == 0:
+        print('ERRO: O token deve ser especificado', file=sys.stderr)
+        parser.print_help(file=sys.stderr)
+        exit(1)
+
+    main(params)
