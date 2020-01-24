@@ -7,6 +7,9 @@ param (
    [Parameter(Mandatory=$true)][string]$AuthToken,   # o token de autenticação no Consyst-e
    [string]$OutDir = '/tmp/xmls',                    # o diretório onde os XMLs serão salvos
    [string]$Kind = 'nfe',                            # o tipo de documento a consultar ('nfe' ou 'cte')
+   [string]$Filter = 'todos',                        # o tipo de filtro a consultar:
+                                                     #   para nfe, usar: 'recebidos', 'emitidos' ou 'todos'
+                                                     #   para cte, usar: 'tomados', 'emitidos' ou 'todos'
    [string]$Query = 'recebido_em: [now-30d TO *]'    # consulta a rodar
 )
 
@@ -37,7 +40,7 @@ $sw1.Start()
 $chaves = New-Object System.Collections.Generic.List[System.Object]
 
 # chama a API com a consulta solicitada
-$res = Call-Consyste "/$Kind/lista/recebidos?q=$([uri]::EscapeDataString($Query))"
+$res = Call-Consyste "/$Kind/$Filter/recebidos?q=$([uri]::EscapeDataString($Query))"
 
 # percorre a API, preenchendo a lista de chaves, até não encontrar mais documentos 
 while ($true) {
