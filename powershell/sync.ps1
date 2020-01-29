@@ -40,7 +40,7 @@ $sw1.Start()
 $chaves = New-Object System.Collections.Generic.List[System.Object]
 
 # chama a API com a consulta solicitada
-$res = Call-Consyste "/$Kind/$Filter/recebidos?q=$([uri]::EscapeDataString($Query))"
+$res = Call-Consyste "/${Kind}/lista/${Filter}?q=$([uri]::EscapeDataString($Query))"
 
 # percorre a API, preenchendo a lista de chaves, até não encontrar mais documentos 
 while ($true) {
@@ -49,7 +49,7 @@ while ($true) {
   $chaves.AddRange($novos)
   $pp = $res.proxima_pagina
   Write-Progress "Coletando chaves" -PercentComplete ($chaves.Count / $res.total * 100)
-  $res = Call-Consyste "/$Kind/lista/continua/$pp"
+  $res = Call-Consyste "/${Kind}/lista/continua/$pp"
 }
 Write-Progress "Coletando chaves" -Completed
 
