@@ -6,6 +6,7 @@
 param (
    [Parameter(Mandatory=$true)][string]$AuthToken,   # o token de autenticação no Consyst-e
    [string]$OutDir = '/tmp/xmls',                    # o diretório onde os XMLs serão salvos
+   [string]$ExtraDir,                                # diretório adicional a verificar por XMLs já salvos
    [string]$Kind = 'nfe',                            # o tipo de documento a consultar ('nfe' ou 'cte')
    [string]$Filter = 'todos',                        # o tipo de filtro a consultar:
                                                      #   para nfe, usar: 'recebidos', 'emitidos' ou 'todos'
@@ -73,8 +74,9 @@ $baixados = 0
 # para cada chave, verifica se já foi baixada ou não
 foreach ($chave in $chaves) {
   Write-Host -NoNewLine "$chave "
-  $existe = Test-Path "$OutDir/$chave.xml"
-  If ($existe) {
+  $existe1 = Test-Path "$OutDir/$chave.xml"
+  $existe2 = Test-Path "$ExtraDir/$chave.xml"
+  If ($existe1 -or $existe2) {
     # caso positivo, informa que o XML já foi encontrado
     Write-Host -ForegroundColor Gray "encontrado"
   }
