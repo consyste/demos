@@ -21,15 +21,17 @@ $baseUri = 'https://portal.consyste.com.br/api/v1'
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
 # função para chamar a API da Consyst-e
-function Call-Consyste {
+function Invoke-Consyste-API {
   param (
     [Parameter(Position=0)][string]$path,
     $OutFile
   )
   $uri = "$baseUri$path"
+  $headers = @{ 'X-Consyste-Auth-Token' = $AuthToken; 'User-Agent' = 'sync.ps1' }
+  
   $pp = $progressPreference
   $progressPreference = 'silentlyContinue'
-  Invoke-RestMethod -Headers @{ 'X-Consyste-Auth-Token' = $AuthToken } -Uri $uri -OutFile $OutFile
+  Invoke-RestMethod -Headers $headers -Uri $uri -OutFile $OutFile
   $progressPreference = $pp
 }
 
@@ -41,16 +43,16 @@ $sw1.Start()
 $chaves = New-Object System.Collections.Generic.List[System.Object]
 
 # chama a API com a consulta solicitada
-$res = Call-Consyste "/${Kind}/lista/${Filter}?q=$([uri]::EscapeDataString($Query))"
+$res = Invoke-Consyste-API "/${Kind}/lista/${Filter}?q=$([uri]::EscapeDataString($Query))"
 
 # percorre a API, preenchendo a lista de chaves, até não encontrar mais documentos 
 while ($true) {
-  $novos = $res | foreach {$_.documentos.chave}
+  $novos = $res | ForEach-Object {$_.documentos.chave}
   If ($novos.Count -eq 0) { break }
   $chaves.AddRange($novos)
   $pp = $res.proxima_pagina
   Write-Progress "Coletando chaves" -PercentComplete ($chaves.Count / $res.total * 100)
-  $res = Call-Consyste "/${Kind}/lista/continua/$pp"
+  $res = Invoke-Consyste-API "/${Kind}/lista/continua/$pp"
 }
 Write-Progress "Coletando chaves" -Completed
 
@@ -84,7 +86,7 @@ foreach ($chave in $chaves) {
     # caso negativo, tenta baixar
     Write-Host -NoNewLine "baixando... "
     Try {
-      Call-Consyste "/$Kind/$chave/download.xml" -OutFile "$OutDir/$chave.xml" | Out-Null
+      Invoke-Consyste-API "/$Kind/$chave/download.xml" -OutFile "$OutDir/$chave.xml" | Out-Null
       
       # se o download funcionar, sinaliza e contabiliza
       Write-Host -ForegroundColor Green "OK!"
