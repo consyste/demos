@@ -1,12 +1,20 @@
-# Exemplos em PowerShell
+# Scripts em PowerShell
 
-## download.ps1
+## Pré-requisitos
+
+É necessário ter o Powershell 7 ou superior instalado. Instruções para instalação
+podem ser obtidas no site da Microsoft:
+https://learn.microsoft.com/pt-br/powershell/scripting/install/install-powershell-on-windows
+
+## Scripts
+
+### download.ps1
 
 Exemplo que realiza download dos XMLs no sistema da Consyst-e para um diretório local.
 Obtém a lista de chaves através de consultas à API da Consyst-e, e depois baixa os
 XMLs que ainda não existirem no diretório especificado.
 
-### Uso
+#### Uso
 
 Para utilizar, é necessário gerar uma chave de acesso de integração, acessando o
 endereço: https://portal.consyste.com.br/app/perfil_usuario/editar
@@ -19,13 +27,13 @@ Exemplo de uso:
 powershell -File download.ps1 -OutDir "C:\XMLs" -AuthToken "abcdefg" -Query 'recebido_em: [2016-08-30 TO *]'
 ```
 
-## upload.ps1
+### upload.ps1
 
 Exemplo que realiza o upload de XMLs de um diretório local para o sistema da Consyst-e.
 Ele inicia listando todos os arquivos nos diretórios especificados, e faz o upload dos
 arquivos que não tenha enviado anteriormente.
 
-### Uso
+#### Uso
 
 Para utilizar, é necessário gerar uma chave de acesso de integração, acessando o
 endereço: https://portal.consyste.com.br/app/perfil_usuario/editar
