@@ -10,43 +10,31 @@ param (
 
 $ErrorActionPreference = "Stop"
 
-if (-not $WatchDirs) {
-    throw "É obrigatório informar pelo menos um diretório a observar, com -WatchDirs"
-}
-if (-not $StateDir) {
-    throw "É obrigatório informar um diretório para salvar o estado da sincronização, com -StateDir"
-}
+if (-not $WatchDirs) { throw "É obrigatório informar pelo menos um diretório a observar, com -WatchDirs" }
+if (-not $StateDir) { throw "É obrigatório informar um diretório para salvar o estado da sincronização, com -StateDir" }
 
 # Verifica se os diretórios informados são válidos
 Write-Host "Observando diretórios:"
 $diretoriosOK = $true
-foreach ($dir in $WatchDirs + @($StateDir))
-{
+foreach ($dir in $WatchDirs + @($StateDir)) {
     $exists = Test-Path -Path $dir -PathType Container
-    if ($exists)
-    {
+    if ($exists) {
         Write-Information "- $dir => OK" -InformationAction Continue
     }
-    else
-    {
+    else {
         $msg = "- $dir => Não é um diretório, ou não está acessível"
         Write-Error $msg -Category OpenError
         $diretoriosOK = $false
     }
 }
 
-if (-not $diretoriosOK)
-{
-    exit 1
-}
+if (-not $diretoriosOK) { exit 1 }
 
 $credFile = Join-Path $StateDir "creds.xml"
-if (Test-Path -Path $credFile -PathType Leaf)
-{
+if (Test-Path -Path $credFile -PathType Leaf) {
     $cred = Import-CliXml $credFile
 }
-else
-{
+else {
     $cred = Get-Credential -Username 'Consyste' -Title 'Integração Consyste - Uploads' -Message 'Informe o token de integração com a plataforma Consyste'
     $cred | Export-CliXml $credFile
 }
@@ -67,8 +55,7 @@ function Invoke-UploadXML
     $jsonBody = @{ 'xml' = $Conteudo.Trim() } | ConvertTo-Json
 
     $response = Invoke-RestMethod -Uri 'https://portal.consyste.com.br/api/v1/envio' -Method Post -Headers $headers -Body $jsonBody -SkipHttpErrorCheck
-    if ($response.error)
-    {
+    if ($response.error) {
         Write-Warning "- Falha ao fazer upload: $( $response.error )"
         return $false
     }
@@ -83,71 +70,78 @@ $chaveRegex = [regex]'\bId="[A-Za-z]+([^"]+)"'
 # Hash para armazenar as chaves já processadas, organizadas por ano e mês
 $cacheChaves = @{ }
 
-# Percorre todos os arquivos XML nos diretórios watchdirs, recursivamente
-foreach ($dir in $WatchDirs)
+# Função para processar um único arquivo XML
+function Process-XmlFile
 {
-    foreach ($xmlFile in Get-ChildItem -Path $dir -Filter '*.xml' -Recurse -File)
-    {
-        Write-Information "Processando arquivo: $( $xmlFile.FullName )" -InformationAction Continue
+    param (
+        [System.IO.FileInfo] $xmlFile
+    )
 
-        # Lê o conteúdo do arquivo XML
-        $conteudo = Get-Content -Path $xmlFile.FullName -Raw -Encoding UTF8
+    Write-Information "Processando arquivo: $( $xmlFile.FullName )" -InformationAction Continue
 
-        # Extrai a chave do arquivo usando a regex
-        $match = $chaveRegex.Match($conteudo)
+    # Lê o conteúdo do arquivo XML
+    $conteudo = Get-Content -Path $xmlFile.FullName -Raw -Encoding UTF8
 
-        if (-not $match.Success)
-        {
-            Write-Warning "Arquivo $( $xmlFile.Name ) não contém uma chave válida no formato esperado."
-            continue
-        }
+    # Extrai a chave do arquivo usando a regex
+    $match = $chaveRegex.Match($conteudo)
 
-        $chave = $match.Groups[1].Value
+    if (-not $match.Success) {
+        Write-Warning "Arquivo $( $xmlFile.Name ) não contém uma chave válida no formato esperado."
+        return
+    }
 
-        if ($chave.Length -ne 44)
-        {
-            Write-Warning "Chave $chave inválida."
-            continue
-        }
+    $chave = $match.Groups[1].Value
 
-        $ano = 2000 + [int] $chave.Substring(2, 2)
-        $mes = $chave.Substring(4, 2)
+    if ($chave.Length -ne 44) {
+        Write-Warning "Chave $chave inválida."
+        return
+    }
 
-        Write-Information "- Chave: $chave, Ano: $ano, Mês: $mes" -InformationAction Continue
+    $ano = 2000 + [int] $chave.Substring(2, 2)
+    $mes = $chave.Substring(4, 2)
 
-        # Define o caminho do arquivo de estado para este ano e mês
-        $arquivoEstado = Join-Path $StateDir "chaves-$ano-$mes.xml"
+    Write-Information "- Chave: $chave, Ano: $ano, Mês: $mes" -InformationAction Continue
 
-        # Carrega o arquivo de lista de chaves do ano e mês, se existir
-        if (-not $cacheChaves.ContainsKey($arquivoEstado))
-        {
-            $cacheChaves[$arquivoEstado] = ( Test-Path -Path $arquivoEstado -PathType Leaf) ? ( Import-CliXml $arquivoEstado) : @{ }
-        }
+    # Define o caminho do arquivo de estado para este ano e mês
+    $arquivoEstado = Join-Path $StateDir "chaves-$ano-$mes.xml"
 
-        $chavesExistentes = $cacheChaves[$arquivoEstado]
+    # Carrega o arquivo de lista de chaves do ano e mês, se existir
+    if (-not $cacheChaves.ContainsKey($arquivoEstado)) {
+        $cacheChaves[$arquivoEstado] = ( Test-Path -Path $arquivoEstado -PathType Leaf) ? ( Import-CliXml $arquivoEstado) : @{ }
+    }
 
-        # Confere se a nova chave consta no arquivo
-        if ( $chavesExistentes.ContainsKey($chave))
-        {
-            Write-Information "- Chave: $chave, já processada anteriormente, ignorando." -InformationAction Continue
-            continue
-        }
+    $chavesExistentes = $cacheChaves[$arquivoEstado]
 
-        # Não está na lista, faz o upload
-        $sucesso = Invoke-UploadXML -Conteudo $conteudo -Chave $chave -Cred $cred
-        if (-not $sucesso)
-        {
-            continue
-        }
+    # Confere se a nova chave consta no arquivo
+    if ( $chavesExistentes.ContainsKey($chave)) {
+        Write-Information "- Chave: $chave, já processada anteriormente, ignorando." -InformationAction Continue
+        return
+    }
 
-        # Upload concluído com sucesso, adiciona a chave na lista e persiste
-        $chavesExistentes[$chave] = @{
-            Arquivo = $xmlFile.FullName
-            DataHora = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-        }
+    # Não está na lista, faz o upload
+    $sucesso = Invoke-UploadXML -Conteudo $conteudo -Chave $chave -Cred $cred
+    if (-not $sucesso) { return }
 
-        $chavesExistentes | Export-CliXml -Path $arquivoEstado
-        Write-Information "- Upload realizado com sucesso. Estado salvo em $arquivoEstado" -InformationAction Continue
+    # Upload concluído com sucesso, adiciona a chave na lista e persiste
+    $chavesExistentes[$chave] = @{
+        Arquivo = $xmlFile.FullName
+        DataHora = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    }
+
+    $chavesExistentes | Export-CliXml -Path $arquivoEstado
+    Write-Information "- Upload realizado com sucesso. Estado salvo em $arquivoEstado" -InformationAction Continue
+}
+
+# Percorre todos os arquivos XML nos diretórios watchdirs, recursivamente, usando travessia BFS incremental
+foreach ($watchDir in $WatchDirs) {
+    $dirQueue = New-Object System.Collections.Queue
+    $dirQueue.Enqueue($watchDir.FullName)
+
+    while ($dirQueue.Count -gt 0) {
+        $currentDir = $dirQueue.Dequeue()
+
+        Get-ChildItem -Path $currentDir -Filter '*.xml' -File | ForEach-Object { Process-XmlFile -xmlFile $_ }
+        Get-ChildItem -Path $currentDir -Directory | ForEach-Object { $dirQueue.Enqueue($_.FullName) }
     }
 }
 
