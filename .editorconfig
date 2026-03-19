@@ -1,0 +1,23 @@
+[*]
+charset = utf-8
+end_of_line = lf
+indent_size = 4
+indent_style = space
+insert_final_newline = false
+max_line_length = 120
+tab_width = 4
+
+[{*.ps1,*.psd1,*.psm1}]
+ij_powershell_block_brace_style = end_of_line
+ij_powershell_catch_on_new_line = true
+ij_powershell_else_on_new_line = true
+ij_powershell_finally_on_new_line = true
+ij_powershell_keep_blank_lines_in_code = 2
+ij_powershell_keep_first_column_comment = true
+ij_powershell_keep_line_breaks = true
+ij_powershell_keep_simple_blocks_in_one_line = true
+ij_powershell_keep_simple_classes_in_one_line = false
+ij_powershell_keep_simple_hash_literal_in_one_line = true
+ij_powershell_keep_simple_lambdas_in_one_line = true
+ij_powershell_keep_simple_methods_in_one_line = true
+ij_powershell_method_brace_style = next_line
