@@ -5,7 +5,8 @@
 
 param (
     [System.IO.DirectoryInfo[]] $WatchDirs, # os diretórios onde os XMLs a custodiar estão salvos
-    [System.IO.DirectoryInfo]   $StateDir   # o diretório onde manter o estado das credenciais e XMLs já enviados
+    [System.IO.DirectoryInfo]   $StateDir,  # o diretório onde manter o estado das credenciais e XMLs já enviados
+    [bool] $KeepRunning = $true             # se verdadeiro, mantém o script rodando até que seja encerrado manualmente
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,7 +15,7 @@ if (-not $WatchDirs) { throw "É obrigatório informar pelo menos um diretório 
 if (-not $StateDir) { throw "É obrigatório informar um diretório para salvar o estado da sincronização, com -StateDir" }
 
 # Verifica se os diretórios informados são válidos
-Write-Host "Observando diretórios:"
+Write-Information "Observando diretórios:"
 $diretoriosOK = $true
 foreach ($dir in $WatchDirs + @($StateDir)) {
     $exists = Test-Path -Path $dir -PathType Container
@@ -39,7 +40,7 @@ else {
     $cred | Export-CliXml $credFile
 }
 
-# Função placeholder para upload - será implementada posteriormente
+# Função para chamar a API da Consyste
 function Invoke-UploadXML
 {
     param (
@@ -52,15 +53,17 @@ function Invoke-UploadXML
         'X-Consyste-Auth-Token' = $Cred.GetNetworkCredential().Password
         'Content-Type' = 'application/json'
     }
-    $jsonBody = @{ 'xml' = $Conteudo.Trim() } | ConvertTo-Json
+    $body = @{
+        'xml' = $Conteudo.Trim()
+        'log' = 'Enviado por upload.ps1'
+    }
 
-    $response = Invoke-RestMethod -Uri 'https://portal.consyste.com.br/api/v1/envio' -Method Post -Headers $headers -Body $jsonBody -SkipHttpErrorCheck
+    $response = Invoke-RestMethod -Uri 'https://portal.consyste.com.br/api/v1/envio/rapido' -Method Post -Headers $headers -Body ($body | ConvertTo-Json) -SkipHttpErrorCheck
     if ($response.error) {
         Write-Warning "- Falha ao fazer upload: $( $response.error )"
         return $false
     }
 
-    # Placeholder: retorna sucesso
     return $true
 }
 
@@ -77,7 +80,7 @@ function Process-XmlFile
         [System.IO.FileInfo] $xmlFile
     )
 
-    Write-Information "Processando arquivo: $( $xmlFile.FullName )" -InformationAction Continue
+    Write-Debug "Processando arquivo: $( $xmlFile.FullName )" -InformationAction Continue
 
     # Lê o conteúdo do arquivo XML
     $conteudo = Get-Content -Path $xmlFile.FullName -Raw -Encoding UTF8
@@ -100,7 +103,7 @@ function Process-XmlFile
     $ano = 2000 + [int] $chave.Substring(2, 2)
     $mes = $chave.Substring(4, 2)
 
-    Write-Information "- Chave: $chave, Ano: $ano, Mês: $mes" -InformationAction Continue
+    Write-Debug "- Chave: $chave, Ano: $ano, Mês: $mes" -InformationAction Continue
 
     # Define o caminho do arquivo de estado para este ano e mês
     $arquivoEstado = Join-Path $StateDir "chaves-$ano-$mes.xml"
@@ -114,13 +117,15 @@ function Process-XmlFile
 
     # Confere se a nova chave consta no arquivo
     if ( $chavesExistentes.ContainsKey($chave)) {
-        Write-Information "- Chave: $chave, já processada anteriormente, ignorando." -InformationAction Continue
+        Write-Debug "- Chave: $chave, já processada anteriormente, ignorando." -InformationAction Continue
         return
     }
 
     # Não está na lista, faz o upload
     $sucesso = Invoke-UploadXML -Conteudo $conteudo -Chave $chave -Cred $cred
     if (-not $sucesso) { return }
+
+    Write-Information "$( $chave ): upload OK!" -InformationAction Continue
 
     # Upload concluído com sucesso, adiciona a chave na lista e persiste
     $chavesExistentes[$chave] = @{
@@ -129,20 +134,45 @@ function Process-XmlFile
     }
 
     $chavesExistentes | Export-CliXml -Path $arquivoEstado
-    Write-Information "- Upload realizado com sucesso. Estado salvo em $arquivoEstado" -InformationAction Continue
+    Write-Debug "- Upload realizado com sucesso. Estado salvo em $arquivoEstado" -InformationAction Continue
 }
 
-# Percorre todos os arquivos XML nos diretórios watchdirs, recursivamente, usando travessia BFS incremental
-foreach ($watchDir in $WatchDirs) {
-    $dirQueue = New-Object System.Collections.Queue
-    $dirQueue.Enqueue($watchDir.FullName)
+do {
+    try {
+        # Percorre todos os arquivos XML nos diretórios watchdirs, recursivamente, usando travessia BFS incremental
+        foreach ($watchDir in $WatchDirs) {
+            $dirQueue = New-Object System.Collections.Queue
+            $dirQueue.Enqueue($watchDir.FullName)
 
-    while ($dirQueue.Count -gt 0) {
-        $currentDir = $dirQueue.Dequeue()
+            while ($dirQueue.Count -gt 0) {
+                $currentDir = $dirQueue.Dequeue()
+                $dirName = Resolve-Path -Path $currentDir -RelativeBasePath $watchDir
 
-        Get-ChildItem -Path $currentDir -Filter '*.xml' -File | ForEach-Object { Process-XmlFile -xmlFile $_ }
-        Get-ChildItem -Path $currentDir -Directory | ForEach-Object { $dirQueue.Enqueue($_.FullName) }
+                Write-Debug "Listando diretório $dirName"
+                $files = Get-ChildItem -Path $currentDir -Filter '*.xml' -File | Sort-Object LastWriteTime -Descending
+                $total = $files.Count
+                Write-Debug "$dirName : $total arquivos encontrados"
+
+                $i = 0
+                foreach ($file in $files) {
+                    $i++
+                    Write-Progress -Activity "Processando diretório" -Status "$i de $total" -PercentComplete (($i / $total) * 100)
+                    try {
+                        Process-XmlFile -xmlFile $file
+                    }
+                    catch {
+                        Write-Error "Erro ao transmitir XML $file : $( $_.Exception.Message )"
+                    }
+                }
+                Write-Progress -Activity "Processando diretório" -Status "Concluído" -PercentComplete 100 -Completed
+                Get-ChildItem -Path $currentDir -Directory | ForEach-Object { $dirQueue.Enqueue($_.FullName) }
+            }
+        }
+        Write-Information "Sincronização concluída, será repetida em 1min."
     }
+    catch {
+        Write-Warning "Ocorreu um erro durante a sincronização, será repetida em 1min"
+    }
+    Start-Sleep -Seconds 60
 }
-
-Write-Host "Sincronização concluída."
+while ($KeepRunning);
